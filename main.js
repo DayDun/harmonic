@@ -490,6 +490,40 @@ harmonic.noteOff = function(pitch, velocity) {
   }
 };
 
+harmonic.Channel = function() {
+  this.in = new Tone.Signal();
+  this.out = new Tone.Signal();
+
+  var effects = [];
+  this.effects = effects;
+
+  var connectEffects = function() {
+    if (effects.length) {
+      this.in.connect(effects[0]);
+
+      var maxIndex = effects.length - 1;
+      for (var i = 0; i < maxIndex; i++) {
+        effects[i].connect(effects[i+1]);
+      }
+      effects[maxIndex].connect(this.out);
+    } else {
+      this.in.connect(this.out);
+    }
+  };
+  this.connectEffects = connectEffects;
+
+  var disconnectEffects = function() {
+    this.in.disconnect();
+
+    if (effects.length) {
+      for (var i = 0; i < effects.length; i++) {
+        effects[i].disconnect();
+      }
+    }
+  };
+  this.disconnectEffects = disconnectEffects;
+};
+
 harmonic.init = function() {
   var audioContext = window.AudioContext    ||
                      window.webAudioContext ||
@@ -497,28 +531,23 @@ harmonic.init = function() {
                      window.oAudioContext   ||
                      window.msAudioContext;
   if (audioContext) {
-    
-    // set up mixer
+  	harmonic.audioContext = Tone.audioContext;
+
+    // Set up mixer
     harmonic.mixer = function() {
       this.master = new Tone.Signal();
       this.master.receive("master");
-      var comp = new Tone.Compressor();
-      this.master.connect(comp);
-      var delay = new Tone.FeedbackDelay(0.3, 0.2);
-      var delayGain =  new Tone.Gain(0.3);
-      comp.connect(delay);
-      delay.connect(delayGain);
-      var reverb = new Tone.Freeverb(0.6, 6000);
-      var reverbGain = new Tone.Gain(0.1);
-      this.master.connect(reverb);
-      delayGain.connect(reverb);
-      reverb.connect(reverbGain);
+      this.channels = [];
+      this.channels.push(new harmonic.Channel());
+
       var masterGain = new Tone.Gain();
-      this.master.connect(masterGain);
-      delayGain.connect(masterGain);
-      reverbGain.connect(masterGain);
+
+      this.channels[0].in.receive("osc");
+      this.channels[0].connectEffects();
+      this.channels[0].out.connect(masterGain);
+
       this.analyser = new Tone.Analyser("waveform");
-      masterGain.connect(analyser).toMaster();
+      masterGain.connect(analyser).connect(Tone.Master);
 
       return this;
     }();
@@ -526,18 +555,18 @@ harmonic.init = function() {
       var ctx = document.getElementById("oscilloscope").getContext("2d");
       ctx.clearRect(0, 0, 150, 40);
 
-      var wave = harmonic.mixer.analyser.analyse();
+      var buffer = harmonic.mixer.analyser.analyse();
       
       ctx.lineWidth = 1;
       ctx.strokeStyle = "#dde5e9";
       ctx.beginPath();
       
       var x = 0;
-      ctx.moveTo(0, wave[0] / 128 * 20);
-      wave.forEach(function(data) {
+      ctx.moveTo(0, buffer[0] / 128 * 20);
+      buffer.forEach(function(data) {
         ctx.lineTo(x, data / 128 * 20);
         
-        x += 150 / wave.length;
+        x += 150 / buffer.length;
       });
       ctx.stroke();
       
@@ -569,7 +598,8 @@ harmonic.init = function() {
         ]
       },
       init: function() {
-        this.output = harmonic.mixer.master;
+        this.output = new Tone.Signal();
+        this.output.send("osc");
 
         this.initialized = true;
         
@@ -739,191 +769,153 @@ harmonic.init = function() {
       tick: function() {}
     });
     
-    instrument.create("piano", {
-      name: "Piano",
-      initialized: false,
-      keys: [],
-      options: {},
-      init: function(audioOutput) {
-        this.output = audioOutput;
-        
-        Soundfont.instrument(harmonic.audioContext, "https://rawgit.com/gleitz/midi-js-soundfonts/gh-pages/MusyngKite/acoustic_grand_piano-mp3.js").then(function(player) {
-          this.player = player;
-          console.log(player);
-        }.bind(this));
-        
-        // Return gui object
-        this.gui = {
-          instrument: this,
-          width: 300,
-          height: 400,
-          children: [
-            {
-              type: "dropdown",
-              x: 10,
-              y: 10,
-              options: [
-                "sine",
-                "square",
-                "sawtooth",
-                "triangle"
-              ],
-              value: "sawtooth",
-              oninput: function(value, instrument) {
-                instrument.options.osc1.type = value;
-              }
-            },
-            {
-              type: "text",
-              x: 10,
-              y: 10,
-              text: "WIP",
-              fontSize: 150,
-              bold: true,
-              italic: false
-            }
-          ]
-        };
-        
-        this.initialized = true;
-      },
-      noteOn: function(pitch, velocity) {
-        return this.keys.push({
-          pitch: pitch,
-          velocity: velocity,
-          init: function(output, player, options) {
-            player.play(pitch + 48);
-            return this;
-          },
-          kill: function() {
-            
-          }
-        }.init(this.output, this.player, this.options)) - 1;
-      },
-      noteOff: function(id, velocity) {
-        if (this.keys[id]) {
-          this.keys[id].kill();
+    // Piano instrument, currently disabled
+    if (false) {
+      instrument.create("piano", {
+        name: "Piano",
+        initialized: false,
+        keys: [],
+        options: {},
+        init: function(audioOutput) {
+          this.output = audioOutput;
           
-          delete this.keys[id];
-        }
-      },
-      tick: function() {}
-    });
+          Soundfont.instrument(harmonic.audioContext, "https://rawgit.com/gleitz/midi-js-soundfonts/gh-pages/MusyngKite/acoustic_grand_piano-mp3.js").then(function(player) {
+            this.player = player;
+            console.log(player);
+          }.bind(this));
+          
+          // Return gui object
+          this.gui = {
+            instrument: this,
+            width: 300,
+            height: 400,
+            children: [
+              {
+                type: "dropdown",
+                x: 10,
+                y: 10,
+                options: [
+                  "sine",
+                  "square",
+                  "sawtooth",
+                  "triangle"
+                ],
+                value: "sawtooth",
+                oninput: function(value, instrument) {
+                  instrument.options.osc1.type = value;
+                }
+              },
+              {
+                type: "text",
+                x: 10,
+                y: 10,
+                text: "WIP",
+                fontSize: 150,
+                bold: true,
+                italic: false
+              }
+            ]
+          };
+          
+          this.initialized = true;
+        },
+        noteOn: function(pitch, velocity) {
+          return this.keys.push({
+            pitch: pitch,
+            velocity: velocity,
+            init: function(output, player, options) {
+              player.play(pitch + 48);
+              return this;
+            },
+            kill: function() {
+              
+            }
+          }.init(this.output, this.player, this.options)) - 1;
+        },
+        noteOff: function(id, velocity) {
+          if (this.keys[id]) {
+            this.keys[id].kill();
+            
+            delete this.keys[id];
+          }
+        },
+        tick: function() {}
+      });
+    }
     
-    instrument.create("soundfont", {
-      name: "Soundfont Player",
-      initialized: false,
-      keys: [],
-      options: {},
-      init: function(audioOutput) {
-        this.output = audioOutput;
-        
-        Soundfont.instrument(harmonic.audioContext, "https://rawgit.com/gleitz/midi-js-soundfonts/gh-pages/MusyngKite/bright_acoustic_piano-mp3.js").then(function(player) {
-          this.player = player;
-          console.log(player);
-        }.bind(this));
-        
-        // Return gui object
-        this.gui = {
-          instrument: this,
-          width: 300,
-          height: 400,
-          children: [
-            {
-              type: "file",
-              x: 10,
-              y: 10,
-              accept: ".sf2",
-              oninput: function(files, instrument) {
-                var file = files[0];
-                
-                var reader = new FileReader();
-                reader.onload = function(event) {
-                  console.log(event.target.result);
-                };
-                reader.readAsArrayBuffer(file);
+    // soundfont player, currently disabled
+    if (false) {
+      instrument.create("soundfont", {
+        name: "Soundfont Player",
+        initialized: false,
+        keys: [],
+        options: {},
+        init: function(audioOutput) {
+          this.output = audioOutput;
+          
+          Soundfont.instrument(harmonic.audioContext, "https://rawgit.com/gleitz/midi-js-soundfonts/gh-pages/MusyngKite/bright_acoustic_piano-mp3.js").then(function(player) {
+            this.player = player;
+            console.log(player);
+          }.bind(this));
+          
+          // Return gui object
+          this.gui = {
+            instrument: this,
+            width: 300,
+            height: 400,
+            children: [
+              {
+                type: "file",
+                x: 10,
+                y: 10,
+                accept: ".sf2",
+                oninput: function(files, instrument) {
+                  var file = files[0];
+                  
+                  var reader = new FileReader();
+                  reader.onload = function(event) {
+                    console.log(event.target.result);
+                  };
+                  reader.readAsArrayBuffer(file);
+                }
+              },
+              {
+                type: "text",
+                x: 10,
+                y: 10,
+                text: "WIP",
+                fontSize: 150,
+                bold: true,
+                italic: false
               }
+            ]
+          };
+          
+          this.initialized = true;
+        },
+        noteOn: function(pitch, velocity) {
+          return this.keys.push({
+            pitch: pitch,
+            velocity: velocity,
+            init: function(output, player, options) {
+              player.play(pitch + 48);
+              return this;
             },
-            {
-              type: "text",
-              x: 10,
-              y: 10,
-              text: "WIP",
-              fontSize: 150,
-              bold: true,
-              italic: false
+            kill: function() {
+              
             }
-          ]
-        };
-        
-        this.initialized = true;
-      },
-      noteOn: function(pitch, velocity) {
-        return this.keys.push({
-          pitch: pitch,
-          velocity: velocity,
-          init: function(output, player, options) {
-            player.play(pitch + 48);
-            return this;
-          },
-          kill: function() {
+          }.init(this.output, this.player, this.options)) - 1;
+        },
+        noteOff: function(id, velocity) {
+          if (this.keys[id]) {
+            this.keys[id].kill();
             
+            delete this.keys[id];
           }
-        }.init(this.output, this.player, this.options)) - 1;
-      },
-      noteOff: function(id, velocity) {
-        if (this.keys[id]) {
-          this.keys[id].kill();
-          
-          delete this.keys[id];
-        }
-      },
-      tick: function() {}
-    });
-
-    instrument.create("tone", {
-      name: "Tone.js",
-      initialized: false,
-      keys: [],
-      init: function(audioOutput) {
-        this.output = audioOutput;
-
-        this.initialized = true;
-        
-        // Return gui object
-        this.gui = {
-          children: []
-        };
-      },
-      noteOn: function(pitch, velocity) {
-        return this.keys.push({
-          pitch: pitch,
-          velocity: velocity,
-          init: function(output, options) {
-            this.tone = new Tone.Synth();
-            this.tone.send("master");
-            this.tone.triggerAttackRelease(harmonic.getFrequencyByPitch(pitch, '8n'));
-
-            // declick pt1
-            this.tone.volume.rampTo(0, 0.05);
-            
-            return this;
-          },
-          kill: function() {
-            // declick pt2
-            this.tone.volume.rampTo(-Infinity, 0.5);
-          }
-        }.init(this.output)) - 1;
-      },
-      noteOff: function(id, velocity) {
-        if (this.keys[id]) {
-          this.keys[id].kill();
-          
-          delete this.keys[id];
-        }
-      },
-      tick: function() {}
-    });
+        },
+        tick: function() {}
+      });
+    }
     
     // Do de kol shit
     window.onkeydown = function(event) {
@@ -941,6 +933,40 @@ harmonic.init = function() {
     window.onmousedown = function(event) {
       harmonic.selectWindow(-1);
     };
+
+    // Create mixer window
+    var mixerElement = document.createElement("div");
+    mixerElement.className += "mixer";
+    var ChannelElement = function() {
+      this.element = document.createElement("div");
+      this.element.className += "mixer-channel";
+      var volumeElement = document.createElement("div");
+      volumeElement.className += "mixer-channel-volume";
+      this.element.appendChild(volumeElement);
+
+      var render = function() {
+        var buffer = harmonic.mixer.analyser.analyse();
+
+        // Root Mean Square
+        var rms = 0;
+        for (var i = 0; i < buffer.length; i++) {
+          var sample = buffer[i];
+          rms += sample * sample;
+        }
+
+        rms /= buffer.length;
+        rms = (Math.sqrt(rms) - 128) * 20;
+
+        console.log(rms);
+
+        volumeElement.style.height = rms + "px";
+        window.requestAnimationFrame(render);
+      };
+      render();
+    };
+    var masterChannel = new ChannelElement();
+    mixerElement.appendChild(masterChannel.element);
+    harmonic.createWindow(418, 200, 190, 428, "Mixer", false, mixerElement);
     
     // Create piano window
     var pianoLayout = [0,  1,   0,  1,   0,  0,  1,   0,  1,   0,  1,   0  ];
