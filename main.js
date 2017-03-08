@@ -2,63 +2,106 @@
   Welcome to the Harmonic source code!
   
   Good to know:
-    * Pitch is relative to C4, so a pitch of 0 is equal to the key C4 (middle C)
     * Harmonic will get the display name of an instrument from the instruments name property
     * Harmonic will only send note data to an instrument if it's initialized property is true
-  
-  TODO:
-    * Window snapping
 */
 
 var harmonic = {};
 
+// Convert MIDI note to frequency, e.g. `harmonic.midi2freq[72]; // = 523.25`
+harmonic.midi2freq = function() {
+  var map = [];
+
+  var a4 = 440.0;
+  var a4Midinote = 69; // :^)
+  var halfStepRatio = Math.pow(2, 1/12);
+  var octaves = 10;
+  var notesPerOctave = 12;
+  for (var i = 0; i < octaves; i++) {
+    for (var j = 0; j < notesPerOctave; j++) {
+      var midinote = i * notesPerOctave + j;
+      map[midinote] = a4 * Math.pow(halfStepRatio, midinote - a4Midinote);
+    }
+  }
+
+  return map;
+}();
+
+// Convert MIDI note to note-octave notation, e.g. `harmonic.midi2noteOctave[72]; // = "C5"`
+harmonic.midi2noteOctave = function() {
+  var map = [];
+
+  var noteNames = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  var octaves = 10;
+  var notesPerOctave = 12;
+  for (var i = 0; i < octaves; i++) {
+    for (var j = 0; j < notesPerOctave; j++) {
+      var midinote = i * notesPerOctave + j;
+      map[midinote] = noteNames[j] + i;
+    }
+  }
+
+  return map;
+}();
+
+// Convert MIDI note to human readable note, without the octave, e.g. `harmonic.midi2note[72]; // "C"`
+harmonic.midi2note = function() {
+  var map = [];
+
+  var noteNames = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  var octaves = 10;
+  var notesPerOctave = 12;
+  for (var i = 0; i < octaves; i++) {
+    for (var j = 0; j < notesPerOctave; j++) {
+      var midinote = i * notesPerOctave + j;
+      map[midinote] = noteNames[j];
+    }
+  }
+
+  return map;
+}();
+
 harmonic.keybinds = {
-    "KeyZ": -12,
-    "KeyS": -11,
-    "KeyX": -10,
-    "KeyD": -9,
-    "KeyC": -8,
-    "KeyV": -7,
-    "KeyG": -6,
-    "KeyB": -5,
-    "KeyH": -4,
-    "KeyN": -3,
-    "KeyJ": -2,
-    "KeyM": -1,
-    "Comma": 0,
-    "KeyL": 1,
-    "Period": 2,
-    "Semicolon": 3,
-    "Slash": 4,
-    "KeyQ": 0,
-    "Digit2": 1,
-    "KeyW": 2,
-    "Digit3": 3,
-    "KeyE": 4,
-    "KeyR": 5,
-    "Digit5": 6,
-    "KeyT": 7,
-    "Digit6": 8,
-    "KeyY": 9,
-    "Digit7": 10,
-    "KeyU": 11,
-    "KeyI": 12,
-    "Digit9": 13,
-    "KeyO": 14,
-    "Digit0": 15,
-    "KeyP": 16,
-    "BracketLeft": 17,
-    "Equal": 18,
-    "BracketRight": 19
+    "KeyZ": 48,
+    "KeyS": 49,
+    "KeyX": 50,
+    "KeyD": 51,
+    "KeyC": 52,
+    "KeyV": 53,
+    "KeyG": 54,
+    "KeyB": 55,
+    "KeyH": 56,
+    "KeyN": 57,
+    "KeyJ": 58,
+    "KeyM": 59,
+    "Comma": 60,
+    "KeyL": 61,
+    "Period": 62,
+    "Semicolon": 63,
+    "Slash": 64,
+    "KeyQ": 60,
+    "Digit2": 61,
+    "KeyW": 62,
+    "Digit3": 63,
+    "KeyE": 64,
+    "KeyR": 65,
+    "Digit5": 66,
+    "KeyT": 67,
+    "Digit6": 68,
+    "KeyY": 69,
+    "Digit7": 70,
+    "KeyU": 71,
+    "KeyI": 72,
+    "Digit9": 73,
+    "KeyO": 74,
+    "Digit0": 75,
+    "KeyP": 76,
+    "BracketLeft": 77,
+    "Equal": 78,
+    "BracketRight": 79
 };
 
-harmonic.keysDown = [];
-
-
-// Lib functions
-harmonic.getFrequencyByPitch = function(pitch) {
-  return 440 * Math.pow(Math.pow(2, 1/12), pitch - 9);
-};
+harmonic.keysDown = {};
 
 // Interface
 harmonic.windows = [];
@@ -409,6 +452,7 @@ instrument.select = function(id) {
           if (isFinite(parseFloat(this.value))) {
             element.oninput(parseFloat(this.value), guiInstrument);
           }
+          event.preventDefault();
         };
         parent.appendChild(number);
         break;
@@ -458,36 +502,71 @@ instrument.select = function(id) {
 
 
 
-// The real shit
-harmonic.noteOn = function(pitch, velocity) {
+// Global keypress handling
+harmonic.noteOn = function(midinote, velocity) {
   if (instrument.list[instrument.selected].initialized) {
-    if (typeof harmonic.keysDown[pitch] === "undefined") {
-      if (document.getElementById("pianorollkey-" + pitch)) {
-        document.getElementById("pianorollkey-" + pitch).className += " active";
-        document.getElementById("pianorollrow-" + pitch).className += " active";
+    if (typeof harmonic.keysDown[midinote] === "undefined") {
+      if (document.getElementById("pianorollkey-" + midinote)) {
+        document.getElementById("pianorollkey-" + midinote).className += " active";
+        document.getElementById("pianorollrow-" + midinote).className += " active";
       }
-      if (document.getElementById("pianokey-" + pitch)) {
-        document.getElementById("pianokey-" + pitch).className += " active";
+      if (document.getElementById("pianokey-" + midinote)) {
+        document.getElementById("pianokey-" + midinote).className += " active";
       }
-      harmonic.keysDown[pitch] = instrument.list[instrument.selected].noteOn(pitch, velocity);
+      harmonic.keysDown[midinote] = instrument.list[instrument.selected].noteOn(midinote, velocity);
     }
   }
 };
 
-harmonic.noteOff = function(pitch, velocity) {
+harmonic.noteOff = function(midinote, velocity) {
   if (instrument.list[instrument.selected].initialized) {
-    if (typeof harmonic.keysDown[pitch] !== "undefined") {
-      if (document.getElementById("pianorollkey-" + pitch)) {
-        document.getElementById("pianorollkey-" + pitch).className = document.getElementById("pianorollkey-" + pitch).className.replace(" active", "");
-        document.getElementById("pianorollrow-" + pitch).className = document.getElementById("pianorollrow-" + pitch).className.replace(" active", "");
+    if (typeof harmonic.keysDown[midinote] !== "undefined") {
+      if (document.getElementById("pianorollkey-" + midinote)) {
+        document.getElementById("pianorollkey-" + midinote).className = document.getElementById("pianorollkey-" + midinote).className.replace(" active", "");
+        document.getElementById("pianorollrow-" + midinote).className = document.getElementById("pianorollrow-" + midinote).className.replace(" active", "");
       }
-      if (document.getElementById("pianokey-" + pitch)) {
-        document.getElementById("pianokey-" + pitch).className = document.getElementById("pianokey-" + pitch).className.replace(" active", "");
+      if (document.getElementById("pianokey-" + midinote)) {
+        document.getElementById("pianokey-" + midinote).className = document.getElementById("pianokey-" + midinote).className.replace(" active", "");
       }
-      instrument.list[instrument.selected].noteOff(harmonic.keysDown[pitch], velocity);
-      delete harmonic.keysDown[pitch];
+      instrument.list[instrument.selected].noteOff(midinote, velocity);
+      delete harmonic.keysDown[midinote];
     }
   }
+};
+
+
+harmonic.Channel = function() {
+  this.in = new Tone.Signal();
+  this.out = new Tone.Signal();
+
+  var effects = [];
+  this.effects = effects;
+
+  var connectEffects = function() {
+    if (effects.length) {
+      this.in.connect(effects[0]);
+
+      var maxIndex = effects.length - 1;
+      for (var i = 0; i < maxIndex; i++) {
+        effects[i].connect(effects[i+1]);
+      }
+      effects[maxIndex].connect(this.out);
+    } else {
+      this.in.connect(this.out);
+    }
+  };
+  this.connectEffects = connectEffects;
+
+  var disconnectEffects = function() {
+    this.in.disconnect();
+
+    if (effects.length) {
+      for (var i = 0; i < effects.length; i++) {
+        effects[i].disconnect();
+      }
+    }
+  };
+  this.disconnectEffects = disconnectEffects;
 };
 
 harmonic.init = function() {
@@ -497,71 +576,80 @@ harmonic.init = function() {
                      window.oAudioContext   ||
                      window.msAudioContext;
   if (audioContext) {
-    // Init audio modules
-    harmonic.audioContext = new audioContext();
-    
-    // Audio Analyser for oscilloscope
-    harmonic.audioAnalyser = harmonic.audioContext.createAnalyser();
-    harmonic.audioAnalyser.connect(harmonic.audioContext.destination);
-    harmonic.audioAnalyser.fftSize = 1024;
-    harmonic.audioAnalyser.smoothingTimeConstant = 1;
-    harmonic.audioAnalyser.dataArray = new Uint8Array(harmonic.audioAnalyser.frequencyBinCount);
-    harmonic.audioAnalyser.render = function() {
+
+    // Set up mixer
+    harmonic.mixer = function() {
+      this.master = new Tone.Signal();
+      this.master.receive("master");
+      this.channels = [];
+      this.channels.push(new harmonic.Channel());
+
+      var masterGain = new Tone.Gain();
+
+      this.channels[0].in.receive("osc");
+      this.channels[0].connectEffects();
+      this.channels[0].out.connect(masterGain);
+
+      this.analyser = new Tone.Analyser("waveform");
+      masterGain.connect(analyser).connect(Tone.Master);
+
+      return this;
+    }();
+
+
+    // TODO: encapsulate this in a separate class like mixer volume rendering with ChannelElement
+    harmonic.render = function() {
       var ctx = document.getElementById("oscilloscope").getContext("2d");
       ctx.clearRect(0, 0, 150, 40);
-      harmonic.audioAnalyser.getByteTimeDomainData(harmonic.audioAnalyser.dataArray);
+
+      var buffer = harmonic.mixer.analyser.analyse();
       
       ctx.lineWidth = 1;
       ctx.strokeStyle = "#dde5e9";
       ctx.beginPath();
       
       var x = 0;
-      ctx.moveTo(0, harmonic.audioAnalyser.dataArray[0] / 128 * 20);
-      harmonic.audioAnalyser.dataArray.forEach(function(data) {
+      ctx.moveTo(0, buffer[0] / 128 * 20);
+      buffer.forEach(function(data) {
         ctx.lineTo(x, data / 128 * 20);
         
-        x += 150 / harmonic.audioAnalyser.dataArray.length;
+        x += 150 / buffer.length;
       });
       ctx.stroke();
       
-      window.requestAnimationFrame(harmonic.audioAnalyser.render);
+      window.requestAnimationFrame(harmonic.render);
     };
-    harmonic.audioAnalyser.render();
-    
-    harmonic.masterCompress = harmonic.audioContext.createDynamicsCompressor();
-    harmonic.masterCompress.connect(harmonic.audioAnalyser);
-    
-    harmonic.masterVolume = harmonic.audioContext.createGain();
-    harmonic.masterVolume.connect(harmonic.masterCompress);
-    
+    harmonic.render();
     
     // Create default instruments
     instrument.create("osc", {
-      name: "Basic Oscillator",
+      name: "3xOsc",
       initialized: false,
       keys: [],
       options: {
-        osc1: {
-          type: "sawtooth",
-          coarse: 0
-        },
-        osc2: {
-          type: "sawtooth",
-          volume: 1,
-          coarse: -12
-        },
-        osc3: {
-          type: "square",
-          volume: 1,
-          coarse: 0
-        }
+        oscs: [
+          {
+            type: "sawtooth",
+            pitchBend: 0
+          },
+          {
+            type: "sawtooth",
+            volume: 1,
+            pitchBend: -12
+          },
+          {
+            type: "square",
+            volume: 1,
+            pitchBend: 0
+          }
+        ]
       },
-      init: function(audioOutput) {
-        this.output = audioOutput;
+      init: function() {
+        this.output = new Tone.Signal();
+        this.output.send("osc");
 
         this.initialized = true;
         
-        // Return gui object
         this.gui = {
           instrument: this,
           width: 300,
@@ -593,9 +681,10 @@ harmonic.init = function() {
                     "sawtooth",
                     "triangle"
                   ],
-                  value: "sawtooth",
+                  value: this.options.oscs[0].type,
                   oninput: function(value, instrument) {
-                    instrument.options.osc1.type = value;
+                    instrument.synths[0].set({"oscillator": {"type": value}});
+                    instrument.options.oscs[0].type = value;
                   }
                 },
                 {
@@ -604,9 +693,9 @@ harmonic.init = function() {
                   y: 70,
                   min: -120,
                   max: 120,
-                  value: 0,
+                  value: this.options.oscs[0].pitchBend,
                   oninput: function(value, instrument) {
-                    instrument.options.osc1.coarse = value;
+                    instrument.options.oscs[0].pitchBend = value;
                   }
                 }
               ]
@@ -637,9 +726,10 @@ harmonic.init = function() {
                     "sawtooth",
                     "triangle"
                   ],
-                  value: "sawtooth",
+                  value: this.options.oscs[1].type,
                   oninput: function(value, instrument) {
-                    instrument.options.osc2.type = value;
+                    instrument.synths[1].set({"oscillator": {"type": value}});
+                    instrument.options.oscs[1].type = value;
                   }
                 },
                 {
@@ -648,9 +738,9 @@ harmonic.init = function() {
                   y: 70,
                   min: -120,
                   max: 120,
-                  value: -12,
+                  value: this.options.oscs[1].pitchBend,
                   oninput: function(value, instrument) {
-                    instrument.options.osc2.coarse = value;
+                    instrument.options.oscs[1].pitchBend = value;
                   }
                 }
               ]
@@ -681,9 +771,10 @@ harmonic.init = function() {
                     "sawtooth",
                     "triangle"
                   ],
-                  value: "square",
+                  value: this.options.oscs[2].type,
                   oninput: function(value, instrument) {
-                    instrument.options.osc3.type = value;
+                    instrument.synths[2].set({"oscillator": {"type": value}});
+                    instrument.options.oscs[2].type = value;
                   }
                 },
                 {
@@ -692,68 +783,56 @@ harmonic.init = function() {
                   y: 70,
                   min: -120,
                   max: 120,
-                  value: 0,
+                  value: this.options.oscs[2].pitchBend,
                   oninput: function(value, instrument) {
-                    instrument.options.osc3.coarse = value;
+                    instrument.options.oscs[2].pitchBend = value;
                   }
                 }
               ]
             }
           ]
         };
+
+        this.synths = [];
+
+        for (var i = 0; i < 3; i++) {
+          var synth = new Tone.PolySynth(6, Tone.Synth);
+          this.synths.push(synth);
+          synth.connect(this.output);
+        }
       },
-      noteOn: function(pitch, velocity) {
-        return this.keys.push({
-          pitch: pitch,
-          velocity: velocity,
-          init: function(output, options) {
-            this.osc1 = harmonic.audioContext.createOscillator();
-            this.osc1.frequency.value = harmonic.getFrequencyByPitch(pitch + options.osc1.coarse);
-            this.osc1.type = options.osc1.type;
-            this.osc1.connect(output);
-            this.osc1.start();
-            
-            this.osc2 = harmonic.audioContext.createOscillator();
-            this.osc2.frequency.value = harmonic.getFrequencyByPitch(pitch + options.osc2.coarse);
-            this.osc2.type = options.osc2.type;
-            this.osc2.connect(output);
-            this.osc2.start();
-            
-            this.osc3 = harmonic.audioContext.createOscillator();
-            this.osc3.frequency.value = harmonic.getFrequencyByPitch(pitch + options.osc3.coarse);
-            this.osc3.type = options.osc3.type;
-            this.osc3.connect(output);
-            this.osc3.start();
-            return this;
-          },
-          kill: function() {
-            this.osc1.stop();
-            this.osc2.stop();
-            this.osc3.stop();
-          }
-        }.init(this.output, this.options)) - 1;
+      noteOn: function(midinote, velocity) {
+        for (var i = 0; i < this.synths.length; i++) {
+          var freq = harmonic.midi2freq[midinote + this.options.oscs[i].pitchBend];
+          var synth = this.synths[i];
+          synth.triggerAttack(freq);
+        }
+        return {midinote, velocity};
       },
-      noteOff: function(id, velocity) {
-        if (this.keys[id]) {
-          this.keys[id].kill();
-          
-          delete this.keys[id];
+      noteOff: function(midinote, velocity) {
+        for (var i = 0; i < this.synths.length; i++) {
+          var freq = harmonic.midi2freq[midinote + this.options.oscs[i].pitchBend];
+          var synth = this.synths[i];
+          synth.triggerRelease(freq);
         }
       },
       tick: function() {}
     });
     
+    // Piano instrument
+    // currently disabled
+    /*
     instrument.create("piano", {
       name: "Piano",
       initialized: false,
       keys: [],
       options: {},
-      init: function(audioOutput) {
-        this.output = audioOutput;
+      init: function() {
+        this.output = new Tone.Signal();
+        this.output.send("piano");
         
-        Soundfont.instrument(harmonic.audioContext, "https://rawgit.com/gleitz/midi-js-soundfonts/gh-pages/MusyngKite/acoustic_grand_piano-mp3.js").then(function(player) {
+        Soundfont.instrument(this.output.context, "https://rawgit.com/gleitz/midi-js-soundfonts/gh-pages/MusyngKite/acoustic_grand_piano-mp3.js").then(function(player) {
           this.player = player;
-          console.log(player);
         }.bind(this));
         
         // Return gui object
@@ -762,21 +841,6 @@ harmonic.init = function() {
           width: 300,
           height: 400,
           children: [
-            {
-              type: "dropdown",
-              x: 10,
-              y: 10,
-              options: [
-                "sine",
-                "square",
-                "sawtooth",
-                "triangle"
-              ],
-              value: "sawtooth",
-              oninput: function(value, instrument) {
-                instrument.options.osc1.type = value;
-              }
-            },
             {
               type: "text",
               x: 10,
@@ -791,36 +855,39 @@ harmonic.init = function() {
         
         this.initialized = true;
       },
-      noteOn: function(pitch, velocity) {
+      noteOn: function(midinote, velocity) {
         return this.keys.push({
-          pitch: pitch,
+          midinote: midinote,
           velocity: velocity,
           init: function(output, player, options) {
-            player.play(pitch + 48);
+            player.play(midinote);
             return this;
           },
           kill: function() {
             
           }
-        }.init(this.output, this.player, this.options)) - 1;
+        }.init(this.output, this.player, this.options));
       },
-      noteOff: function(id, velocity) {
-        if (this.keys[id]) {
-          this.keys[id].kill();
+      noteOff: function(midinote, velocity) {
+        if (this.keys[midinote]) {
+          this.keys[midinote].kill();
           
           delete this.keys[id];
         }
       },
       tick: function() {}
     });
-    
+    */
+    // soundfont player
+    // @status disabled
+    /*
     instrument.create("soundfont", {
       name: "Soundfont Player",
       initialized: false,
       keys: [],
       options: {},
       init: function(audioOutput) {
-        this.output = audioOutput;
+        this.output = new Tone.Signal();
         
         Soundfont.instrument(harmonic.audioContext, "https://rawgit.com/gleitz/midi-js-soundfonts/gh-pages/MusyngKite/bright_acoustic_piano-mp3.js").then(function(player) {
           this.player = player;
@@ -884,6 +951,7 @@ harmonic.init = function() {
       },
       tick: function() {}
     });
+    */
     
     // Do de kol shit
     window.onkeydown = function(event) {
@@ -901,20 +969,51 @@ harmonic.init = function() {
     window.onmousedown = function(event) {
       harmonic.selectWindow(-1);
     };
+
+    // Create mixer window
+    var mixerElement = document.createElement("div");
+    mixerElement.className += "mixer";
+    var ChannelElement = function() {
+      this.element = document.createElement("div");
+      this.element.className += "mixer-channel";
+      var volumeElement = document.createElement("div");
+      volumeElement.className += "mixer-channel-volume";
+      this.element.appendChild(volumeElement);
+
+      var render = function() {
+        var buffer = harmonic.mixer.analyser.analyse();
+
+        // Root Mean Square
+        var rms = 0;
+        for (var i = 0; i < buffer.length; i++) {
+          var sample = buffer[i];
+          rms += sample * sample;
+        }
+
+        rms /= buffer.length;
+        rms = (Math.sqrt(rms) - 128) * 20;
+
+        volumeElement.style.height = rms + "px";
+        window.requestAnimationFrame(render);
+      };
+      render();
+    };
+    var masterChannel = new ChannelElement();
+    mixerElement.appendChild(masterChannel.element);
+    harmonic.createWindow(418, 200, 190, 428, "Mixer", false, mixerElement);
     
     // Create piano window
-    var pianoLayout = [0,  1,   0,  1,   0,  0,  1,   0,  1,   0,  1,   0  ];
-    var keyNames =    ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
     var pianoElement = document.createElement("ul");
     pianoElement.className = "piano";
-    for (var i=0; i<36; i++) {
+    for (var i = 48; i <= 83; i++) {
       var element = document.createElement("li");
-      element.id = "pianokey-" + (i - 12);
-      element.className = (pianoLayout[i % pianoLayout.length]) ? "black" : "white";
+      element.id = "pianokey-" + i;
+      element.midinote = i;
+      element.className = (harmonic.midi2note[i].length > 1 ) ? "black" : "white";
       
       element.onmousedown = element.onmouseover = function(event) {
         if (event.buttons) {
-          harmonic.noteOn(parseInt(event.target.id.slice(9)), 100);
+          harmonic.noteOn(event.target.midinote, 100);
           if (event.preventDefault) {
             event.preventDefault();
           }
@@ -924,7 +1023,7 @@ harmonic.init = function() {
       };
       
       element.onmouseup = element.onmouseout = function(event) {
-        harmonic.noteOff(parseInt(event.target.id.slice(9)), 0);
+        harmonic.noteOff(event.target.midinote, 0);
       };
       
       pianoElement.appendChild(element);
@@ -942,20 +1041,24 @@ harmonic.init = function() {
     
     var pianoRollPiano = document.createElement("ul");
     pianoRollPiano.className = "piano-preview";
-    for (var j=12*11-1; j>=0; j--) {
+    for (var i = harmonic.midi2noteOctave.length - 1; i >= 0; i--) {
+      var note = harmonic.midi2note[i];
+      var noteOctave = harmonic.midi2noteOctave[i];
       var key = document.createElement("li");
-      key.id = "pianorollkey-" + (j - 48);
-      key.className = (pianoLayout[j % 12] ? "black" : "white") + " " + keyNames[j % 12];
-      if (pianoLayout[j % 12] === 0) {
+      key.id = "pianorollkey-" + i;
+      key.midinote = i;
+      key.className = (note.length > 1 ? "black" : "white") + " " + note;
+      if (note.length == 1) {
         var label = document.createElement("span");
         label.className = "label";
-        label.innerHTML = keyNames[j % 12] + Math.floor(j / 12);
+        label.innerHTML = noteOctave;
         key.appendChild(label);
       }
       
       key.onmousedown = key.onmouseover = function(event) {
         if (event.buttons) {
-          harmonic.noteOn(parseInt(event.target.id.slice(13)), 100);
+          console.log(event.target);
+          harmonic.noteOn(event.target.midinote, 100);
           if (event.preventDefault) {
             event.preventDefault();
           }
@@ -965,7 +1068,7 @@ harmonic.init = function() {
       };
       
       key.onmouseup = key.onmouseout = function(event) {
-        harmonic.noteOff(parseInt(event.target.id.slice(13)), 0);
+        harmonic.noteOff(event.target.midinote, 0);
       };
       
       pianoRollPiano.appendChild(key);
@@ -974,9 +1077,9 @@ harmonic.init = function() {
     
     var pianoRollGrid = document.createElement("div");
     pianoRollGrid.className = "piano-roll-grid";
-    for (var k=12*11-1; k>=0; k--) {
+    for (var i = harmonic.midi2noteOctave.length - 1; i >= 0; i--) {
       var row = document.createElement("div");
-      row.id = "pianorollrow-" + (k - 48);
+      row.id = "pianorollrow-" + i;
       pianoRollGrid.appendChild(row);
     }
     pianoRoll.appendChild(pianoRollGrid);
